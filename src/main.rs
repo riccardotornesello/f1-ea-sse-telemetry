@@ -1,6 +1,6 @@
 mod types;
 
-use crate::types::PacketHeader;
+use crate::types::{CarTelemetryPacket, PacketHeader};
 use bytebuffer::{ByteBuffer, Endian};
 use std::net::UdpSocket;
 
@@ -17,10 +17,14 @@ fn main() -> std::io::Result<()> {
             buffer.set_endian(Endian::LittleEndian);
 
             let header = PacketHeader::new(&mut buffer);
-            println!(
-                "Packet {} - Frame {} - Format {}",
-                header.packet_id, header.frame_identifier, header.packet_format
-            );
+
+            match header.packet_id {
+                6 => {
+                    let packet = CarTelemetryPacket::new(&mut buffer);
+                    println!("{:?}", packet.tyres_surface_temperature);
+                }
+                _ => {}
+            }
         }
     }
 }
