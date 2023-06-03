@@ -1,30 +1,40 @@
+mod broadcaster;
+mod listener;
 mod types;
 
-use crate::types::{CarTelemetryPacket, PacketHeader};
-use bytebuffer::{ByteBuffer, Endian};
-use std::net::UdpSocket;
+use self::broadcaster::Broadcaster;
+use crate::listener::listener_handler;
+use actix_web::{web, App, HttpServer, Responder};
+use std::sync::Arc;
 
-fn main() -> std::io::Result<()> {
-    {
-        // let connection = sqlite::open(":memory:").unwrap();
+const PING_INTERVAL: u64 = 20;
+const EVENTS_ADDRESS: &str = "0.0.0.0:8000";
+const LISTENER_ADDRESS: &str = "0.0.0.0:34254";
 
-        let socket = UdpSocket::bind("0.0.0.0:34254")?;
-        let mut buf = [0; 4096];
+pub struct AppState {
+    broadcaster: Arc<Broadcaster>,
+}
 
-        loop {
-            let (amt, _src) = socket.recv_from(&mut buf)?;
-            let mut buffer = ByteBuffer::from_bytes(&mut buf[..amt]);
-            buffer.set_endian(Endian::LittleEndian);
+pub async fn new_sse_client(state: web::Data<AppState>) -> impl Responder {
+    state.broadcaster.new_client().await
+}
 
-            let header = PacketHeader::new(&mut buffer);
+#[actix_web::main]
+async fn main() -> std::io::Result<()> {
+    let broadcaster: Arc<Broadcaster> = Broadcaster::create(PING_INTERVAL);
 
-            match header.packet_id {
-                6 => {
-                    let packet = CarTelemetryPacket::new(&mut buffer);
-                    println!("{:?}", packet.tyres_surface_temperature);
-                }
-                _ => {}
-            }
-        }
-    }
+    actix_web::rt::spawn(listener_handler(LISTENER_ADDRESS, broadcaster.clone()));
+
+    println!("Webserver started on {}", EVENTS_ADDRESS);
+
+    HttpServer::new(move || {
+        App::new()
+            .app_data(web::Data::new(AppState {
+                broadcaster: Arc::clone(&broadcaster),
+            }))
+            .route("/events", web::get().to(new_sse_client))
+    })
+    .bind(EVENTS_ADDRESS)?
+    .run()
+    .await
 }

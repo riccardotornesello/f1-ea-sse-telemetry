@@ -1,7 +1,7 @@
-extern crate bytebuffer;
-
 use bytebuffer::ByteBuffer;
+use serde::{Deserialize, Serialize};
 
+#[derive(Serialize, Deserialize)]
 pub struct CarTelemetryPacket {
     pub speed: u16,
     pub throttle: f32,
